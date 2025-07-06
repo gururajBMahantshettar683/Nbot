@@ -1,0 +1,206 @@
+{% extends 'base.html' %}
+{% block title %}Chatbot{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4">
+  <div class="row">
+    <!-- Sidebar for chat history -->
+    <aside class="col-md-3 col-lg-2" id="chat-sidebar">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header bg-gradient-primary text-white d-flex align-items-center justify-content-between rounded-top">
+          <span><i class="bi bi-chat-left-text me-2"></i>Chats</span>
+          <button class="btn btn-sm btn-light" id="new-chat-btn" title="New chat"><i class="bi bi-plus"></i></button>
+        </div>
+        <div class="list-group list-group-flush" id="chat-list" style="max-height: 70vh; overflow-y: auto;"></div>
+      </div>
+    </aside>
+    <!-- Main chat area -->
+    <main class="col-md-9 col-lg-7 offset-lg-1">
+      <div class="card shadow-lg border-0" id="chat-section" style="background: var(--card-bg);">
+        <div class="card-header bg-gradient-primary text-white d-flex align-items-center rounded-top">
+          <i class="bi bi-robot me-2"></i><strong>AI Assistant</strong>
+        </div>
+        <div class="card-body d-flex flex-column gap-2" style="height: 400px; overflow-y: auto; background: var(--chat-bg);" id="chat-box">
+          <!-- Chat messages appear here -->
+        </div>
+        <div class="card-footer p-2" style="background: var(--card-bg); border-top: 1px solid var(--chat-bg);">
+          <form class="input-group" onsubmit="event.preventDefault(); sendMessage();">
+            <input type="text" id="chat-input" class="form-control border-0 shadow-sm" placeholder="Ask anything..." style="background: var(--chat-bot-bg); color: var(--text); border-radius: 1rem;">
+            <button class="btn btn-primary btn-icon d-flex align-items-center justify-content-center" id="send-btn" type="button" style="border-radius: 1rem; width: 44px; height: 44px;"><i class="bi bi-send"></i></button>
+          </form>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+let currentChatId = null;
+let chatMeta = {};
+
+// Load chat list on page load
+async function loadChats() {
+  const res = await fetch('/api/chats');
+  const chats = await res.json();
+  chatMeta = {};
+  const chatList = document.getElementById('chat-list');
+  chatList.innerHTML = '';
+  chats.forEach(chat => {
+    chatMeta[chat._id] = chat;
+    const item = document.createElement('div');
+    item.className = 'd-flex align-items-center list-group-item list-group-item-action';
+    if (chat._id === currentChatId) item.classList.add('active');
+    // Chat title with tooltip for date/time
+    const titleBtn = document.createElement('button');
+    titleBtn.className = 'flex-grow-1 text-start btn btn-link p-0 m-0 border-0';
+    titleBtn.textContent = chat.title || 'Chat';
+    titleBtn.title = chat.created_at ? (new Date(chat.created_at)).toLocaleString() : '';
+    titleBtn.onclick = () => selectChat(chat._id);
+    item.appendChild(titleBtn);
+    // Delete button
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn btn-sm btn-link text-danger ms-2';
+    delBtn.innerHTML = '<i class="bi bi-trash"></i>';
+    delBtn.title = 'Delete chat';
+    delBtn.onclick = async (e) => {
+      e.stopPropagation();
+      if (confirm('Delete this chat?')) {
+        await fetch(`/api/chats/${chat._id}`, { method: 'DELETE' });
+        if (currentChatId === chat._id) currentChatId = null;
+        await loadChats();
+        // Auto-select first chat or create new
+        const chatList = document.getElementById('chat-list');
+        if (chatList.children.length > 0) {
+          chatList.children[0].querySelector('button').click();
+        } else {
+          createNewChat();
+        }
+      }
+    };
+    item.appendChild(delBtn);
+    chatList.appendChild(item);
+  });
+}
+
+// Create a new chat (title will be set to first user message)
+async function createNewChat() {
+  currentChatId = null;
+  await loadChats();
+  document.getElementById('chat-box').innerHTML = '';
+}
+
+// Select a chat and load its messages
+async function selectChat(chatId) {
+  currentChatId = chatId;
+  await loadChats();
+  await loadChatMessages(chatId);
+}
+
+// Load messages for a chat
+async function loadChatMessages(chatId) {
+  const res = await fetch(`/api/chats/${chatId}`);
+  const messages = await res.json();
+  const chatBox = document.getElementById('chat-box');
+  chatBox.innerHTML = '';
+  messages.forEach(msg => appendMessage(msg.role, msg.content));
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+// Append a message to the chat window
+function appendMessage(sender, text) {
+  const chatBox = document.getElementById('chat-box');
+  const msg = document.createElement('div');
+  msg.className = `chat-message ${sender}`;
+  if (sender === 'bot' || sender === 'assistant') {
+    msg.innerHTML = marked.parse(text);
+  } else {
+    msg.textContent = text;
+  }
+  chatBox.appendChild(msg);
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+// Send a message
+async function sendMessage() {
+  const chatInput = document.getElementById('chat-input');
+  const message = chatInput.value.trim();
+  if (!message) return;
+  appendMessage('user', message);
+  chatInput.value = '';
+  // If no chat exists, create one with this message as the title
+  if (!currentChatId) {
+    const res = await fetch('/api/chats', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ first_message: message }) });
+    const data = await res.json();
+    currentChatId = data.chat_id;
+    await loadChats();
+  }
+  // Store user message
+  await fetch(`/api/chats/${currentChatId}/message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: 'user', content: message }) });
+  // Get bot response
+  const response = await fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message, chat_id: currentChatId }) });
+  const data = await response.json();
+  appendMessage('bot', data.response || 'Sorry, an error occurred.');
+  // Store bot message
+  await fetch(`/api/chats/${currentChatId}/message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: 'assistant', content: data.response }) });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('send-btn').onclick = sendMessage;
+  document.getElementById('chat-input').addEventListener('keydown', function(e) { if (e.key === 'Enter') sendMessage(); });
+  document.getElementById('new-chat-btn').onclick = createNewChat;
+  loadChats().then(() => {
+    // Auto-select first chat or create new
+    const chatList = document.getElementById('chat-list');
+    if (chatList.children.length > 0) {
+      chatList.children[0].querySelector('button').click();
+    } else {
+      createNewChat();
+    }
+  });
+});
+</script>
+<style>
+:root {
+  --primary: #2563eb;
+  --primary-light: #3b82f6;
+  --chat-bg: #f7f9fa;
+  --chat-bot-bg: #f1f5f9;
+  --chat-user-bg: #2563eb;
+  --chat-user-text: #fff;
+  --chat-bot-text: #222;
+  --sidebar-active: #e0e7ff;
+  --sidebar-hover: #f1f5ff;
+  --chat-shadow: 0 2px 12px 0 rgba(0,0,0,0.10);
+}
+[data-theme="dark"] {
+  --chat-bg: #23243a;
+  --chat-bot-bg: #2a2a3e;
+  --chat-user-bg: #2563eb;
+  --chat-user-text: #fff;
+  --chat-bot-text: #e0e0e0;
+  --sidebar-active: #23243a;
+  --sidebar-hover: #34344e;
+  --chat-shadow: 0 2px 12px 0 rgba(0,0,0,0.30);
+}
+#chat-sidebar { border-right: 1px solid var(--card-bg); min-height: 80vh; background: var(--card-bg); }
+#chat-list .active { background: var(--sidebar-active); color: var(--primary); font-weight: 600; }
+#chat-list .list-group-item-action:hover { background: var(--sidebar-hover); color: var(--primary); }
+#chat-section { margin-top: 30px; background: var(--card-bg); border-radius: 1.2rem; box-shadow: var(--chat-shadow); }
+.card-header.bg-gradient-primary { background: linear-gradient(90deg, var(--primary) 0%, var(--primary-light) 100%) !important; border-radius: 1.2rem 1.2rem 0 0; }
+.card-header strong { font-size: 1.1rem; }
+.card-body#chat-box { background: var(--chat-bg); border-radius: 0 0 1.2rem 1.2rem; }
+.chat-message { margin: 16px 0; padding: 16px 22px; border-radius: 1.5rem; max-width: 75%; word-wrap: break-word; white-space: pre-line; font-size: 1.08rem; box-shadow: 0 2px 8px 0 rgba(0,0,0,0.06); transition: background 0.2s, color 0.2s; }
+.chat-message.user { background: linear-gradient(90deg, var(--primary) 60%, var(--primary-light) 100%); color: var(--chat-user-text); margin-left: auto; border-bottom-right-radius: 0.5rem; text-align: right; font-weight: 500; box-shadow: 0 2px 8px 0 rgba(37,99,235,0.10); }
+.chat-message.bot, .chat-message.assistant { background: var(--chat-bot-bg); color: var(--chat-bot-text); margin-right: auto; border-bottom-left-radius: 0.5rem; text-align: left; font-weight: 400; }
+#chat-list .btn-link { text-decoration: none; }
+#chat-list .btn-link:focus { outline: none; box-shadow: none; }
+#chat-list .btn-link, #chat-list .btn-link i { color: var(--text-muted); }
+#chat-list .btn-link.text-danger, #chat-list .btn-link.text-danger i { color: #e11d48; }
+#chat-list .btn-link.text-danger:hover { background: #fee2e2; }
+#chat-input { background: var(--chat-bot-bg); border-radius: 1rem; color: var(--text); }
+#send-btn { background: var(--primary); color: #fff; border-radius: 1rem; }
+#send-btn:hover { background: var(--primary-light); }
+</style>
+{% endblock %}

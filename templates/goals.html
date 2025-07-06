@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}Goals & Tasks{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <div class="card shadow-lg border-0 mb-4" style="background: var(--card-bg);">
+        <div class="card-header bg-gradient-primary text-white d-flex align-items-center rounded-top">
+          <i class="bi bi-flag me-2"></i><strong>My Goals & Tasks</strong>
+        </div>
+        <div class="card-body">
+          <form method="POST" class="mb-4 d-flex align-items-center gap-2">
+            <input type="text" name="goal" class="form-control" placeholder="Add a new goal or task..." required maxlength="100" style="background: var(--chat-bot-bg); color: var(--text); border-radius: 1rem;">
+            <button class="btn btn-primary d-flex align-items-center gap-1" type="submit"><i class="bi bi-plus"></i> Add</button>
+          </form>
+          {% if goals %}
+          <ul class="list-group list-group-flush">
+            {% for goal in goals %}
+            <li class="list-group-item d-flex align-items-center justify-content-between py-3 px-2" style="background: var(--chat-bg); border-radius: 0.8rem; margin-bottom: 0.5rem; border: none;">
+              <div class="d-flex align-items-center gap-2">
+                <input class="form-check-input" type="checkbox" {% if goal.completed %}checked{% endif %} onclick="toggleGoal('{{ goal._id }}', this.checked)">
+                <span class="fw-medium {% if goal.completed %}text-decoration-line-through text-muted{% endif %}" style="font-size: 1.08rem;">{{ goal.goal }}</span>
+              </div>
+              <span class="badge bg-secondary" style="font-size: 0.95rem;">{{ goal.created_at.strftime('%Y-%m-%d') if goal.created_at else '' }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <div class="text-muted text-center py-3">No goals yet. Add one above!</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleGoal(goalId, completed) {
+  fetch(`/api/goals/${goalId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ completed })
+  }).then(res => res.json()).then(data => {
+    if (data.message) {
+      location.reload();
+    }
+  });
+}
+</script>
+{% endblock %}

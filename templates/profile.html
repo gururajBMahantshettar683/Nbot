@@ -1,0 +1,153 @@
+{% extends 'base.html' %}
+{% block flash_messages %}
+    <!-- Flash messages will be rendered inside the card -->
+{% endblock %}
+{% block content %}
+<div class="container-fluid mt-4 d-flex justify-content-center">
+    <!-- Profile Card -->
+    <div class="card shadow-lg border-0 col-md-6 col-lg-4">
+        <div class="card-body p-4">
+            <h2 class="display-6 fw-bold text-primary mb-4">
+                <i class="bi bi-person me-2"></i>Edit Profile
+            </h2>
+            <!-- Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ 'danger' if category == 'danger' else 'success' }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            <form method="POST" action="{{ url_for('profile') }}">
+                <div class="mb-3">
+                    <label for="username" class="form-label fw-semibold">Username</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-person-circle"></i></span>
+                        <input type="text" class="form-control shadow-sm" id="username" name="username" value="{{ username }}" placeholder="Enter your username" required>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="email" class="form-label fw-semibold">Email (Read-only)</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-envelope"></i></span>
+                        <input type="email" class="form-control shadow-sm" id="email" value="{{ email }}" readonly>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="dob" class="form-label fw-semibold">Date of Birth</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-calendar"></i></span>
+                        <input type="date" class="form-control shadow-sm" id="dob" name="dob" value="{{ dob }}" max="{{ today }}">
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label for="gender" class="form-label fw-semibold">Gender</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-person"></i></span>
+                        <select class="form-select shadow-sm" id="gender" name="gender">
+                            <option value="" {% if not gender %}selected{% endif %}>Select Gender</option>
+                            <option value="male" {% if gender == 'male' %}selected{% endif %}>Male</option>
+                            <option value="female" {% if gender == 'female' %}selected{% endif %}>Female</option>
+                            <option value="other" {% if gender == 'other' %}selected{% endif %}>Other</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary btn-icon w-100">
+                    <i class="bi bi-check-circle me-2"></i>Save Changes
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+/* Custom Styles */
+.card {
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15) !important;
+}
+.form-control, .form-select {
+    border-radius: 0.5rem;
+    transition: border-color 0.3s, box-shadow 0.3s;
+    background: var(--card-bg);
+    color: var(--text);
+}
+.form-control:focus, .form-select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+.btn-icon {
+    transition: background-color 0.3s, transform 0.2s;
+}
+.btn-icon:hover {
+    transform: scale(1.05);
+    background-color: var(--primary-dark) !important;
+}
+.btn-icon i {
+    line-height: 1;
+}
+.input-group-text {
+    background: var(--card-bg);
+    border-color: var(--border);
+    color: var(--text);
+}
+.text-primary {
+    color: var(--primary) !important;
+}
+.alert {
+    border-radius: 0.5rem;
+}
+</style>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    try {
+        // Highlight Profile link
+        document.querySelectorAll('.sidebar .nav-link').forEach(link => {
+            link.classList.remove('active');
+        });
+        const profileLink = document.querySelector('.sidebar .nav-link[href="/profile"]');
+        if (profileLink) {
+            profileLink.classList.add('active');
+        } else {
+            console.warn('Profile link not found');
+        }
+
+        // Handle data-scroll links
+        document.querySelectorAll('.sidebar .nav-link[data-scroll]').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const href = link.getAttribute('href');
+                if (href) {
+                    console.log('Navigating to:', href);
+                    window.location.href = href;
+                } else {
+                    console.error('Invalid href on link:', link);
+                }
+            });
+        });
+
+        // Dark Mode Toggle
+        const darkModeToggle = document.getElementById("darkModeToggle");
+        if (localStorage.getItem('theme') === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            darkModeToggle.checked = true;
+        }
+        darkModeToggle.addEventListener('change', () => {
+            const theme = darkModeToggle.checked ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+        });
+    } catch (err) {
+        console.error('Error in profile.html script:', err);
+    }
+});
+</script>
+{% endblock %}

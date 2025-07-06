@@ -1,0 +1,516 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- User Info -->
+    <div class="card shadow-lg border-0 mb-4">
+        <div class="card-body">
+            <h2 class="display-6 fw-bold text-primary">Welcome, {{ username }}!</h2>
+            <p class="text-muted">
+                <i class="bi bi-calendar me-2"></i><strong>Date of Birth:</strong> {{ dob or 'Not provided' }}<br>
+                <i class="bi bi-person me-2"></i><strong>Gender:</strong> {{ gender or 'Not provided' }}
+            </p>
+        </div>
+    </div>
+
+    <!-- Nutrition Dashboard -->
+    <div class="card shadow-lg border-0 mb-5" id="dashboard">
+        <div class="card-header bg-gradient-primary text-white rounded-top">
+            <h5 class="card-title mb-0"><i class="bi bi-bar-chart-line me-2"></i>Nutrition Dashboard</h5>
+        </div>
+        <div class="card-body">
+            <p class="card-text text-muted">Track your nutrient intake with interactive charts.</p>
+            <div class="control-panel mb-4 p-3 rounded">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label for="timeFrame" class="form-label fw-semibold">Time Frame</label>
+                        <select class="form-select shadow-sm" id="timeFrame">
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 daily-only" style="display: none;">
+                        <label for="selectedDate" class="form-label fw-semibold">Select Date</label>
+                        <input type="date" class="form-control shadow-sm" id="selectedDate" max="{{ today }}">
+                    </div>
+                    <div class="col-md-3 daily-only" style="display: none;">
+                        <label for="dayRange" class="form-label fw-semibold">Day Range</label>
+                        <select class="form-select shadow-sm" id="dayRange">
+                            <option value="7">Last 7 Days</option>
+                            <option value="14">Last 14 Days</option>
+                            <option value="30">Last 30 Days</option>
+                        </select>
+                    </div>
+                </div>
+                <!-- Nutrient Filters -->
+                <div class="mt-3">
+                    <label class="form-label fw-semibold">Select Nutrients</label>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for nutrient in ['energy_kcal', 'carb_g', 'protein_g', 'fat_g', 'calcium_mg', 'iron_mg', 'vitc_mg'] %}
+                            <div class="form-check">
+                                <input class="form-check-input nutrient-filter" type="checkbox" value="{{ nutrient }}" id="filter-{{ nutrient }}" checked>
+                                <label class="form-check-label" for="filter-{{ nutrient }}">{{ nutrient.replace('_', ' ').title() }}</label>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="chart-container p-3 rounded" style="overflow-x: auto;">
+                <canvas id="nutritionChart" height="120"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="row g-4 mb-5">
+        <!-- Nutrition Intake Card -->
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <h5 class="card-title text-primary"><i class="bi bi-utensils me-2"></i>Nutrition Intake</h5>
+                    <p class="card-text text-muted">Log your meals to monitor your diet.</p>
+                    <button class="btn btn-primary btn-icon" type="button" data-bs-toggle="collapse" data-bs-target="#intakeForm">
+                        <i class="bi bi-plus-circle me-2"></i>Log Nutrition Intake
+                    </button>
+                    <div class="collapse mt-4" id="intakeForm">
+                        <form method="POST" action="{{ url_for('log_intake') }}">
+                            <div class="mb-3">
+                                <label for="food_name" class="form-label">Food Name</label>
+                                <select class="form-select shadow-sm" id="food_name" name="food_name" required>
+                                    <option value="" disabled selected>Select a food</option>
+                                    {% if foods_available %}
+                                        {% for food in common_foods %}
+                                            <option value="{{ food }}">{{ food.title() }}</option>
+                                        {% endfor %}
+                                    {% else %}
+                                        <option value="" disabled>No foods available. Contact support.</option>
+                                    {% endif %}
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="quantity" class="form-label">Quantity</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-hash"></i></span>
+                                    <input type="number" class="form-control shadow-sm" id="quantity" name="quantity" step="0.1" min="0" required>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="unit" class="form-label">Unit</label>
+                                <select class="form-select shadow-sm" id="unit" name="unit" required>
+                                    <option value="grams">Grams (per 100g)</option>
+                                    <option value="servings">Servings (per unit serving)</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="meal_type" class="form-label">Meal Type</label>
+                                <select class="form-select shadow-sm" id="meal_type" name="meal_type" required>
+                                    <option value="breakfast">Breakfast</option>
+                                    <option value="lunch">Lunch</option>
+                                    <option value="dinner">Dinner</option>
+                                    <option value="snack">Snack</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-icon"><i class="bi bi-check-circle me-2"></i>Submit Intake
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Symptom Tracker Card -->
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <h5 class="card-title text-danger"><i class="bi bi-heart-pulse me-2"></i>Symptom Tracker</h5>
+                    <p class="card-text text-muted">Log symptoms to track your health.</p>
+                    <button class="btn btn-danger btn-icon" type="button" data-bs-toggle="collapse" data-bs-target="#symptomForm">
+                        <i class="bi bi-plus-circle me-2"></i>Log Symptom
+                    </button>
+                    <div class="collapse mt-4" id="symptomForm">
+                        <form method="POST" action="{{ url_for('log_symptoms') }}">
+                            <div class="mb-3">
+                                <label for="symptom" class="form-label">Symptom</label>
+                                <select class="form-select shadow-sm" id="symptom" name="symptom" required>
+                                    <option value="fatigue">Fatigue</option>
+                                    <option value="headache">Headache</option>
+                                    <option value="nausea">Nausea</option>
+                                    <option value="dizziness">Dizziness</option>
+                                    <option value="custom">Custom</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="severity" class="form-label">Severity (1-5)</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-exclamation-circle"></i></span>
+                                    <input type="number" class="form-control shadow-sm" id="severity" name="severity" min="1" max="5" required>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="description" class="form-label">Description (required for custom)</label>
+                                <textarea class="form-control shadow-sm" id="description" name="description" rows="3"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-danger btn-icon"><i class="bi bi-check-circle me-2"></i>Submit Symptom
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer Note -->
+    <p class="mt-5 text-muted text-center">Track your health journey with precision. Log meals and symptoms to gain insights.</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+    /* Custom Styles */
+    .card {
+        transition: transform 0.3s, box-shadow 0.3s;
+    }
+
+    .card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15) !important;
+    }
+
+    .btn-icon {
+        transition: background-color 0.3s, transform 0.2s;
+    }
+
+    .btn-icon:hover {
+        transform: scale(1.05);
+        background-color: var(--primary-dark) !important;
+    }
+
+    .btn-icon i {
+        line-height: 1;
+    }
+
+    .form-control, .form-select {
+        border-radius: 0.5rem;
+        transition: border-color 0.3s, box-shadow 0.3s;
+        background: var(--card-bg);
+        color: var(--text);
+    }
+
+    .form-control:focus, .form-select:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    }
+
+    .control-panel {
+        background: var(--card-bg);
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+
+    .chart-container {
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Sidebar Styles */
+    .sidebar .nav-link {
+        color: var(--text);
+        border-radius: 0.5rem;
+        margin-bottom: 5px;
+        transition: background 0.3s;
+    }
+
+    .sidebar .nav-link:hover, .sidebar .nav-link.active {
+        background: var(--primary);
+        color: white;
+    }
+
+    .sidebar .nav-link.text-danger:hover {
+        background: #dc3545;
+        color: white;
+    }
+
+    /* Responsive Adjustments */
+    @media (max-width: 768px) {
+        .main-content {
+            margin-left: 60px !important;
+        }
+        .control-panel .col-md-3 {
+            margin-bottom: 10px;
+        }
+        #chat-popup {
+            max-width: 90%;
+            right: 5%;
+        }
+        #chat-btn {
+            width: 50px;
+            height: 50px;
+            font-size: 24px;
+        }
+    }
+</style>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        try {
+            const sendBtn = document.getElementById("send-btn");
+            const chatInput = document.getElementById("chat-input");
+            const chatBox = document.getElementById("chat-box");
+            const timeFrameSelect = document.getElementById("timeFrame");
+            const selectedDateInput = document.getElementById("selectedDate");
+            const dayRangeSelect = document.getElementById("dayRange");
+            const dailyOnlyElements = document.querySelectorAll(".daily-only");
+            const nutrientFilters = document.querySelectorAll(".nutrient-filter");
+            const ctx = document.getElementById("nutritionChart").getContext("2d");
+            const darkModeToggle = document.getElementById("darkModeToggle");
+
+            let nutritionChart;
+            let chartData;
+
+            // Set max date for date picker to today
+            const today = new Date().toISOString().split('T')[0];
+            selectedDateInput.max = today;
+
+            // Dark Mode Toggle
+            if (localStorage.getItem('theme') === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                darkModeToggle.checked = true;
+            }
+            darkModeToggle.addEventListener('change', () => {
+                const theme = darkModeToggle.checked ? 'dark' : 'light';
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('theme', theme);
+            });
+
+            // Handle URL hash on page load
+            function handleHash() {
+                console.log('Handling hash:', window.location.hash);
+                const hash = window.location.hash.substring(1);
+                if (!hash) {
+                    console.log('No hash found');
+                    return;
+                }
+                const target = document.getElementById(hash);
+                if (!target) {
+                    console.warn('Target element not found for hash:', hash);
+                    return;
+                }
+                console.log('Found target:', target);
+                try {
+                    if (hash === 'intakeForm' || hash === 'symptomForm') {
+                        const collapseButton = document.querySelector(`button[data-bs-target="#${hash}"]`);
+                        if (!collapseButton) {
+                            console.warn('Collapse button not found for:', hash);
+                        } else {
+                            console.log('Found collapse button:', collapseButton);
+                            if (typeof bootstrap === 'undefined' || !bootstrap.Collapse) {
+                                console.error('Bootstrap Collapse not available');
+                                return;
+                            }
+                            const collapse = bootstrap.Collapse.getOrCreateInstance(target, { toggle: false });
+                            collapse.show();
+                            console.log('Collapse shown for:', hash);
+                        }
+                    }
+                    // Scroll with delay
+                    setTimeout(() => {
+                        target.scrollIntoView({ behavior: 'smooth' });
+                        console.log('Scrolled to:', hash);
+                    }, 300);
+                    // Update active link
+                    document.querySelectorAll('.sidebar .nav-link').forEach(l => l.classList.remove('active'));
+                    const activeLink = document.querySelector(`.sidebar .nav-link[href*="#${hash}"]`);
+                    if (activeLink) {
+                        activeLink.classList.add('active');
+                        console.log('Active link set:', activeLink);
+                    } else {
+                        console.warn('Active link not found for hash:', hash);
+                    }
+                } catch (err) {
+                    console.error('Error in handleHash:', err);
+                }
+            }
+
+            // Sidebar Navigation
+            document.querySelectorAll('.sidebar .nav-link[data-scroll]').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const href = link.getAttribute('href');
+                    console.log('Sidebar link clicked:', href);
+                    const targetId = href.includes('#') ? href.split('#')[1] : href;
+                    const target = document.getElementById(targetId);
+                    if (target) {
+                        console.log('Target found:', targetId);
+                        try {
+                            if (targetId === 'intakeForm' || targetId === 'symptomForm') {
+                                const collapseButton = document.querySelector(`button[data-bs-target="#${targetId}"]`);
+                                if (collapseButton) {
+                                    const collapse = bootstrap.Collapse.getOrCreateInstance(target, { toggle: false });
+                                    collapse.show();
+                                    console.log('Collapse shown for:', targetId);
+                                } else {
+                                    console.warn('Collapse button not found for:', targetId);
+                                }
+                            }
+                            target.scrollIntoView({ behavior: 'smooth' });
+                            document.querySelectorAll('.sidebar .nav-link').forEach(l => l.classList.remove('active'));
+                            link.classList.add('active');
+                        } catch (err) {
+                            console.error('Error in sidebar navigation:', err);
+                        }
+                    } else {
+                        console.log('Target not found, navigating to:', href);
+                        window.location.href = href;
+                    }
+                });
+            });
+
+            // Run hash handler with delay
+            setTimeout(() => {
+                console.log('Running handleHash on load');
+                handleHash();
+            }, 100);
+
+            // Dashboard Functionality
+            async function fetchDashboardData(timeFrame, date = null, days = 7) {
+                try {
+                    let url = `/dashboard_data?time_frame=${timeFrame}`;
+                    if (timeFrame === "daily") {
+                        if (date) url += `&date=${date}`;
+                        url += `&days=${days}`;
+                    }
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    if (data.error) {
+                        alert(data.error);
+                        return;
+                    }
+                    chartData = data;
+                    updateChart();
+                } catch (err) {
+                    alert("Error loading dashboard data.");
+                }
+            }
+
+            function updateChart() {
+                const selectedNutrients = Array.from(nutrientFilters)
+                    .filter(checkbox => checkbox.checked)
+                    .map(checkbox => checkbox.value);
+                const datasets = selectedNutrients.map((nutrient, index) => ({
+                    label: nutrient.replace('_', ' ').toUpperCase(),
+                    data: chartData.data[nutrient],
+                    backgroundColor: `rgba(${60 + index * 40}, ${180 - index * 20}, ${255 - index * 30}, 0.6)`,
+                    borderColor: `rgba(${60 + index * 40}, ${180 - index * 20}, ${255 - index * 30}, 1)`,
+                    borderWidth: 1
+                }));
+                if (nutritionChart) {
+                    nutritionChart.destroy();
+                }
+                nutritionChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: chartData.labels,
+                        datasets: datasets
+                    },
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Amount'
+                                },
+                                grid: {
+                                    color: '#e9ecef'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Time'
+                                },
+                                grid: {
+                                    display: false
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top',
+                                labels: {
+                                    font: {
+                                        size: 12
+                                    }
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Nutrient Intake',
+                                font: {
+                                    size: 16
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: '#343a40',
+                                titleFont: {
+                                    size: 14
+                                },
+                                bodyFont: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        barPercentage: 0.9 / (chartData.labels.length > 10 ? 10 : chartData.labels.length),
+                        categoryPercentage: 0.8,
+                        animation: {
+                            duration: 1000,
+                            easing: 'easeOutQuart'
+                        }
+                    }
+                });
+            }
+
+            function toggleDailyControls(show) {
+                dailyOnlyElements.forEach(el => el.style.display = show ? 'block' : 'none');
+            }
+
+            timeFrameSelect.addEventListener("change", () => {
+                const timeFrame = timeFrameSelect.value;
+                toggleDailyControls(timeFrame === "daily");
+                if (timeFrame === "daily") {
+                    const date = selectedDateInput.value || today;
+                    const days = dayRangeSelect.value;
+                    fetchDashboardData(timeFrame, date, days);
+                } else {
+                    fetchDashboardData(timeFrame);
+                }
+            });
+
+            selectedDateInput.addEventListener("change", () => {
+                if (timeFrameSelect.value === "daily") {
+                    const date = selectedDateInput.value;
+                    if (date) {
+                        fetchDashboardData("daily", date, 1);
+                    }
+                }
+            });
+
+            dayRangeSelect.addEventListener("change", () => {
+                if (timeFrameSelect.value === "daily") {
+                    const days = dayRangeSelect.value;
+                    fetchDashboardData("daily", null, days);
+                }
+            });
+
+            nutrientFilters.forEach(checkbox => {
+                checkbox.addEventListener("change", updateChart);
+            });
+
+            // Initial Load
+            toggleDailyControls(true);
+            fetchDashboardData("daily", null, 7);
+        } catch (err) {
+            console.error('Error in home.html script:', err);
+        }
+    });
+</script>
+{% endblock %}
