@@ -13,8 +13,10 @@ from rag_pipeline import answer_query
 import logging
 from werkzeug.exceptions import HTTPException
 from bson.errors import InvalidId
+from deep_translator import GoogleTranslator 
 
 load_dotenv()
+
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', os.urandom(24))
@@ -244,11 +246,26 @@ def dashboard_data():
         print(f"Error fetching dashboard data: {e}")
         return jsonify({'error': 'Server error'}), 500
 
+@app.route('/translate', methods=['POST'])
+def translate_text():
+    try:
+        data = request.get_json()
+        text = data.get('text', '')
+        source = data.get('source', 'en')
+        target = data.get('target', 'en')
+        if text and source != target:
+            translated = GoogleTranslator(source=source, target=target).translate(text)
+            return jsonify({'translated': translated})
+        return jsonify({'translated': text})
+    except Exception as e:
+        print("Translate endpoint error:", e)
+        return jsonify({'translated': text})
 @app.route('/chat', methods=['GET', 'POST'])
 def chat():
     if request.method == 'POST':
         data = request.get_json()
         query = data.get('message', '')
+        language = data.get('language', 'en')  # Default to English
         user_id = session.get('user_id')
 
         if not query or not user_id:
@@ -258,12 +275,19 @@ def chat():
         if not user:
             return jsonify({'error': 'User not found'}), 404
 
+        # Translate query to English if needed
+        translated_query = query
+        if language != 'en':
+            try:
+                translated_query = GoogleTranslator(source=language, target='en').translate(query)
+            except Exception as e:
+                print("Translation error (input):", e)
+
         # Conversation history management
         if 'conversation_history' not in session:
             session['conversation_history'] = []
-        # Append current user message
+        # Append original message (for user display)
         session['conversation_history'].append({'role': 'user', 'content': query})
-        # Keep only the last 10 turns (user+bot)
         session['conversation_history'] = session['conversation_history'][-10:]
 
         # Get recent food logs
@@ -292,18 +316,26 @@ def chat():
             for s in recent_symptoms
         ]
 
-        # Pass to RAG pipeline with conversation context
+        # Call RAG pipeline with translated input
         conversation_context = session['conversation_history']
-        answer, docs = answer_query(query, user=user, conversation_context=conversation_context)
+        answer, docs = answer_query(translated_query, user=user, conversation_context=conversation_context)
         response_text = getattr(answer, "content", str(answer))
 
-        # Append bot response to conversation history
+        # Translate response back to original language
+        if language != 'en':
+            try:
+                response_text = GoogleTranslator(source='en', target=language).translate(response_text)
+            except Exception as e:
+                print("Translation error (output):", e)
+
+        # Append translated response for display
         session['conversation_history'].append({'role': 'assistant', 'content': response_text})
         session['conversation_history'] = session['conversation_history'][-10:]
 
         return jsonify({'response': response_text}), 200
     else:
         return render_template('chat.html')
+
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():

@@ -19,11 +19,35 @@
         <div class="card-header bg-gradient-primary text-white d-flex align-items-center rounded-top">
           <i class="bi bi-robot me-2"></i><strong>AI Assistant</strong>
         </div>
-        <div class="card-body d-flex flex-column gap-2" style="height: 400px; overflow-y: auto; background: var(--chat-bg);" id="chat-box">
-          <!-- Chat messages appear here -->
+        <div class="card-body d-flex flex-column gap-2" style="height: 400px; overflow-y: auto; background: var(--chat-bg);" id="chat-box-wrapper">
+          <div id="chat-loading" class="text-center my-2" style="display: none;">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Translating chat...</span>
+            </div>
+            <div class="text-muted small mt-1">Translating chat...</div>
+          </div>
+          <div id="chat-box" class="flex-grow-1">
+            <!-- Chat messages appear here -->
+          </div>
         </div>
+
         <div class="card-footer p-2" style="background: var(--card-bg); border-top: 1px solid var(--chat-bg);">
           <form class="input-group" onsubmit="event.preventDefault(); sendMessage();">
+            <select id="language-selector" class="form-select form-select-sm me-2" style="width: auto;">
+              <option value="en" selected>English</option>
+              <option value="hi">Hindi</option>
+              <option value="ta">Tamil</option>
+              <option value="te">Telugu</option>
+              <option value="kn">Kannada</option>
+              <option value="ml">Malayalam</option>
+              <option value="mr">Marathi</option>
+              <option value="gu">Gujarati</option>
+              <option value="bn">Bengali</option>
+              <option value="pa">Punjabi</option>
+              <option value="or">Odia</option>
+              <option value="ur">Urdu</option>
+            </select>
+
             <input type="text" id="chat-input" class="form-control border-0 shadow-sm" placeholder="Ask anything..." style="background: var(--chat-bot-bg); color: var(--text); border-radius: 1rem;">
             <button type="button" class="btn btn-secondary btn-icon ms-2" id="mic-btn" style="border-radius: 1rem; width: 44px; height: 44px;"><i class="bi bi-mic"></i></button>
             <button class="btn btn-primary btn-icon d-flex align-items-center justify-content-center" id="send-btn" type="button" style="border-radius: 1rem; width: 44px; height: 44px;"><i class="bi bi-send"></i></button>
@@ -104,10 +128,39 @@ async function loadChatMessages(chatId) {
   const res = await fetch(`/api/chats/${chatId}`);
   const messages = await res.json();
   const chatBox = document.getElementById('chat-box');
+  const loadingSpinner = document.getElementById('chat-loading');
+  const language = document.getElementById('language-selector').value;
+
+  // Show spinner
+  loadingSpinner.style.display = 'block';
   chatBox.innerHTML = '';
-  messages.forEach(msg => appendMessage(msg.role, msg.content));
+
+  for (const msg of messages) {
+    let content = msg.content;
+
+    if (msg.role === 'assistant' && language !== 'en') {
+      try {
+        const transRes = await fetch('/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: content, source: 'en', target: language })
+        });
+        const transData = await transRes.json();
+        content = transData.translated || content;
+      } catch (e) {
+        console.error("Translation error:", e);
+      }
+    }
+
+    appendMessage(msg.role, content);
+  }
+
+  // Hide spinner
+  loadingSpinner.style.display = 'none';
   chatBox.scrollTop = chatBox.scrollHeight;
 }
+
+
 
 // Append a message to the chat window
 function appendMessage(sender, text) {
@@ -162,37 +215,63 @@ function appendMessage(sender, text) {
 async function sendMessage() {
   const chatInput = document.getElementById('chat-input');
   const message = chatInput.value.trim();
+  const language = document.getElementById('language-selector').value;
   if (!message) return;
+
   appendMessage('user', message);
   chatInput.value = '';
-  // If no chat exists, create one with this message as the title
+
   if (!currentChatId) {
-    const res = await fetch('/api/chats', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ first_message: message }) });
+    const res = await fetch('/api/chats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ first_message: message })
+    });
     const data = await res.json();
     currentChatId = data.chat_id;
     await loadChats();
   }
-  // Store user message
-  await fetch(`/api/chats/${currentChatId}/message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: 'user', content: message }) });
-  // Get bot response
-  const response = await fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message, chat_id: currentChatId }) });
+
+  await fetch(`/api/chats/${currentChatId}/message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role: 'user', content: message })
+  });
+
+  const response = await fetch('/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, language, chat_id: currentChatId })  // ✅ language included
+  });
+
   const data = await response.json();
   appendMessage('bot', data.response || 'Sorry, an error occurred.');
-  // Store bot message
-  await fetch(`/api/chats/${currentChatId}/message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: 'assistant', content: data.response }) });
+
+  await fetch(`/api/chats/${currentChatId}/message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role: 'assistant', content: data.response })
+  });
 }
+
 
 document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('send-btn').onclick = sendMessage;
   document.getElementById('chat-input').addEventListener('keydown', function(e) { if (e.key === 'Enter') sendMessage(); });
   document.getElementById('new-chat-btn').onclick = createNewChat;
   loadChats().then(() => {
-    // Auto-select first chat or create new
     const chatList = document.getElementById('chat-list');
     if (chatList.children.length > 0) {
       chatList.children[0].querySelector('button').click();
     } else {
       createNewChat();
+    }
+  });
+
+  // ✅ Add this inside the DOMContentLoaded block
+  document.getElementById('language-selector').addEventListener('change', () => {
+    if (currentChatId) {
+      loadChatMessages(currentChatId);
     }
   });
 });
@@ -256,7 +335,6 @@ document.getElementById('mic-btn').addEventListener('click', () => {
 };
 
 });
-
 </script>
 <style>
 :root {
