@@ -9,7 +9,7 @@ import os
 DB_FAISS_PATH = "vectorstore/db_faiss"
 MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
 GROQ_API_KEY = "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"  # Safer key loading
-GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"  # Updated model name
+GROQ_MODEL = "deepseek-r1-distill-llama-70b"  # Updated model name
 
 # Set up embeddings and vector store
 embeddings = HuggingFaceEmbeddings(
@@ -119,6 +119,13 @@ def answer_query(query, user=None, conversation_context=None):
 
     # Use only the current query for retrieval
     retrieved_docs = retrieve_docs(retrieval_query)
+    if not retrieved_docs:
+        return "I'm sorry, I couldn’t find enough information in the documents to answer that.", []
+    print("\n[Retrieved Documents]")
+    for i, doc in enumerate(retrieved_docs, 1):
+        print(f"\nDoc {i}:")
+        print(doc.page_content)
+        print(f"Metadata: {doc.metadata}")
     context = get_context(retrieved_docs)
 
     # Build user profile
