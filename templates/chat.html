@@ -49,8 +49,9 @@
             </select>
 
             <input type="text" id="chat-input" class="form-control border-0 shadow-sm" placeholder="Ask anything..." style="background: var(--chat-bot-bg); color: var(--text); border-radius: 1rem;">
+            <button type="button" class="btn btn-secondary btn-icon ms-2" id="mic-btn" style="border-radius: 1rem; width: 44px; height: 44px;"><i class="bi bi-mic"></i></button>
             <button class="btn btn-primary btn-icon d-flex align-items-center justify-content-center" id="send-btn" type="button" style="border-radius: 1rem; width: 44px; height: 44px;"><i class="bi bi-send"></i></button>
-          </form>
+      </form>
         </div>
       </div>
     </main>
@@ -175,6 +176,41 @@ function appendMessage(sender, text) {
   chatBox.scrollTop = chatBox.scrollHeight;
 }
 
+/*  OPTIONAL : Text added gradually
+function appendMessage(sender, text) {
+  const chatBox = document.getElementById('chat-box');
+  const msg = document.createElement('div');
+  msg.className = `chat-message ${sender}`;
+
+  if (sender === 'user') {
+    msg.textContent = text;
+    chatBox.appendChild(msg);
+    chatBox.scrollTop = chatBox.scrollHeight;
+    return;
+  }
+
+  // Typing effect for bot/assistant
+  const span = document.createElement('span');
+  msg.appendChild(span);
+  chatBox.appendChild(msg);
+  chatBox.scrollTop = chatBox.scrollHeight;
+
+  let index = 0;
+  function typeNextChar() {
+    if (index < text.length) {
+      span.innerHTML += text[index] === '\n' ? '<br>' : text[index];
+      index++;
+      chatBox.scrollTop = chatBox.scrollHeight;
+      setTimeout(typeNextChar, 20); // Adjust speed here (ms between characters)
+    }
+  }
+  typeNextChar();
+}
+
+*/
+
+
+
 // Send a message
 async function sendMessage() {
   const chatInput = document.getElementById('chat-input');
@@ -240,6 +276,65 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 
+function showSpeechToast(message = "⚠️ Speech not recognized. Try again.") {
+  const toastEl = document.getElementById('speechToast');
+  const toastBody = toastEl.querySelector('.toast-body');
+  toastBody.textContent = message;
+
+  const toast = new bootstrap.Toast(toastEl, { delay: 4000 }); // auto-hide after 4s
+  toast.show();
+}
+
+let recognition;
+
+document.addEventListener('DOMContentLoaded', () => {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.lang = 'en-IN';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  recognition.continuous = true;
+});
+
+document.getElementById('mic-btn').addEventListener('click', () => {
+  try {
+    recognition.start(); // actual speech recognition begins
+    isRegcognising = true;
+    
+  } catch (e) {
+    console.error('Recognition start error:', e);
+  }
+  setTimeout(() => {}, 5000);
+  const micBtn = document.getElementById('mic-btn');
+  micBtn.disabled = false;
+  micBtn.innerHTML = '<i class="bi bi-record-circle text-danger"></i>'; // recording icon
+
+  recognition.onresult = (event) => {
+    const transcript = event.results[0][0].transcript;
+    document.getElementById('chat-input').value = transcript;
+  };
+
+  recognition.onend = () => {
+    micBtn.disabled = false;
+    micBtn.innerHTML = '<i class="bi bi-mic"></i>';
+  };
+
+  recognition.onerror = (event) => {
+  console.error('Speech recognition error:', event.error);
+
+  if (event.error === "no-speech") {
+    showSpeechToast("🎤 No speech detected. Please try again.");
+  } else if (event.error === "audio-capture") {
+    showSpeechToast("🎤 Microphone not available.");
+  } else {
+    showSpeechToast("🎤 Error: " + event.error);
+  }
+
+  micBtn.disabled = false;
+  micBtn.innerHTML = '<i class="bi bi-mic"></i>';
+};
+
+});
 </script>
 <style>
 :root {
