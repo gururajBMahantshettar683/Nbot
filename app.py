@@ -1,3 +1,5 @@
+
+
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
 from flask_bcrypt import Bcrypt
 from flask_session import Session
@@ -85,6 +87,22 @@ def handle_exception(e):
     logging.exception("Unhandled Exception: %s", e)
     return make_json_error(str(e), 500)
 
+# --- Dedicated Symptoms Page Route ---
+@app.route('/symptoms', methods=['GET'])
+def symptoms_page():
+    if 'user_id' not in session:
+        flash('Please log in to access your symptoms.', 'warning')
+        return redirect(url_for('login'))
+    # Fetch unresolved symptoms for the user
+    user_id = session['user_id']
+    symptoms = list(symptom_logs_collection.find({
+        'user_id': ObjectId(user_id),
+        'status': {'$ne': 'resolved'}
+    }).sort('date', -1))
+    for s in symptoms:
+        s['_id'] = str(s['_id'])
+        s['date'] = s.get('date').isoformat() if s.get('date') else None
+    return render_template('symptoms.html', symptoms=symptoms)
 @app.route('/')
 def home():
     if 'user_id' not in session:
@@ -111,6 +129,71 @@ def home():
         session.pop('username', None)
         flash(f'An error occurred: {str(e)}', 'danger')
         return redirect(url_for('login'))
+
+# --- Symptom Analytics API ---
+@app.route('/api/symptom_trends', methods=['GET'])
+def api_symptom_trends():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    user_id = session['user_id']
+    pipeline = [
+        {'$match': {
+            'user_id': ObjectId(user_id)
+        }},
+        {'$project': {
+            'date': {'$dateToString': {'format': '%Y-%m-%d', 'date': '$date'}},
+            'symptom': 1,
+            'severity': 1,
+            'description': 1
+        }},
+        {'$group': {
+            '_id': {'date': '$date', 'symptom': '$symptom'},
+            'count': {'$sum': 1},
+            'severities': {'$push': '$severity'},
+            'descriptions': {'$push': '$description'}
+        }},
+        {'$sort': {'_id.date': 1}}
+    ]
+    try:
+        data = list(symptom_logs_collection.aggregate(pipeline))
+        # Build a set of all dates and all symptoms
+        all_dates = sorted(list({d['_id']['date'] for d in data}))
+        all_symptoms = sorted(list({d['_id']['symptom'] for d in data}))
+        # Build a mapping: {symptom: {date: {count, severities, descriptions}}}
+        symptom_map = {sym: {date: {'count': 0, 'severities': [], 'descriptions': []} for date in all_dates} for sym in all_symptoms}
+        for d in data:
+            date = d['_id']['date']
+            symptom = d['_id']['symptom']
+            symptom_map[symptom][date] = {
+                'count': d['count'],
+                'severities': d.get('severities', []),
+                'descriptions': d.get('descriptions', [])
+            }
+        # Prepare datasets for Chart.js stacked bar
+        datasets = []
+        for symptom in all_symptoms:
+            data_points = []
+            meta = []
+            for date in all_dates:
+                entry = symptom_map[symptom][date]
+                data_points.append(entry['count'])
+                # For tooltip: show all severities/descriptions for that day/symptom
+                meta.append({
+                    'severities': entry['severities'],
+                    'descriptions': entry['descriptions']
+                })
+            datasets.append({
+                'label': symptom,
+                'data': data_points,
+                'meta': meta
+            })
+        result = {
+            'labels': all_dates,
+            'datasets': datasets
+        }
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/profile', methods=['GET', 'POST'])
 def profile():
@@ -308,11 +391,10 @@ def chat():
             if 'food_name' in log and isinstance(log['food_name'], str)
         ]
 
-        # Get recent symptom logs
-        recent_symptoms = symptom_logs_collection.find(
-            {'user_id': ObjectId(user_id)}
-        ).sort('date', -1).limit(5)
-
+        # Get unresolved symptom logs (for context)
+        unresolved_symptoms = symptom_logs_collection.find(
+            {'user_id': ObjectId(user_id), 'resolved': {'$ne': True}}
+        ).sort('date', -1)
         user['recent_symptoms'] = [
             {
                 'symptom': s.get('symptom'),
@@ -320,7 +402,7 @@ def chat():
                 'description': s.get('description'),
                 'date': s.get('date'),
             }
-            for s in recent_symptoms
+            for s in unresolved_symptoms
         ]
 
         # Call RAG pipeline with translated input
@@ -509,6 +591,7 @@ def log_symptoms():
     symptom = request.form['symptom'].strip().lower()
     severity = request.form['severity'].strip()
     description = request.form['description'].strip()
+    custom_symptom = request.form.get('custom_symptom', '').strip().lower()
 
     if not all([symptom, severity]):
         flash('Symptom and severity are required.', 'danger')
@@ -522,20 +605,27 @@ def log_symptoms():
         flash('Severity must be between 1 and 5.', 'danger')
         return redirect(url_for('home'))
 
-    if symptom not in ['fatigue', 'headache', 'nausea', 'dizziness', 'custom']:
+    valid_symptoms = ['fatigue', 'headache', 'nausea', 'dizziness', 'custom']
+    if symptom not in valid_symptoms:
         flash('Invalid symptom.', 'danger')
         return redirect(url_for('home'))
 
-    if symptom == 'custom' and not description:
-        flash('Description required for custom symptom.', 'danger')
-        return redirect(url_for('home'))
+    # If custom, require custom_symptom input
+    if symptom == 'custom':
+        if not custom_symptom:
+            flash('Please enter the custom symptom name.', 'danger')
+            return redirect(url_for('home'))
+        symptom_name = custom_symptom
+    else:
+        symptom_name = symptom
 
     symptom_logs_collection.insert_one({
         'user_id': ObjectId(session['user_id']),
         'date': datetime.utcnow(),
-        'symptom': symptom,
+        'symptom': symptom_name,
         'severity': severity,
-        'description': description
+        'description': description,
+        'status': 'active'
     })
 
     flash('Symptom logged successfully!', 'success')
@@ -609,6 +699,53 @@ def update_goal(goal_id):
             return jsonify({'error': 'Goal not found.'}), 404
     except (InvalidId, Exception):
         return jsonify({'error': 'Invalid goal ID.'}), 400
+
+# --- Delete Goal API ---
+@app.route('/api/goals/<goal_id>', methods=['DELETE'])
+def delete_goal(goal_id):
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    try:
+        result = goals_collection.delete_one({'_id': ObjectId(goal_id), 'user_id': session['user_id']})
+        if result.deleted_count:
+            return jsonify({'message': 'Goal deleted.'})
+        else:
+            return jsonify({'error': 'Goal not found.'}), 404
+    except (InvalidId, Exception):
+        return jsonify({'error': 'Invalid goal ID.'}), 400
+
+# --- Symptom Resolver API ---
+@app.route('/api/symptoms', methods=['GET'])
+def api_list_symptoms():
+    if 'user_id' not in session:
+        return jsonify([])
+    user_id = session['user_id']
+    symptoms = list(symptom_logs_collection.find({
+        'user_id': ObjectId(user_id),
+        'status': {'$ne': 'resolved'}
+    }).sort('date', -1))
+    for s in symptoms:
+        s['_id'] = str(s['_id'])
+        if 'user_id' in s:
+            s['user_id'] = str(s['user_id'])
+        s['date'] = s.get('date').isoformat() if s.get('date') else None
+    return jsonify(symptoms)
+
+@app.route('/api/symptoms/<symptom_id>/resolve', methods=['POST'])
+def api_resolve_symptom(symptom_id):
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    try:
+        result = symptom_logs_collection.update_one(
+            {'_id': ObjectId(symptom_id), 'user_id': ObjectId(session['user_id'])},
+            {'$set': {'status': 'resolved'}}
+        )
+        if result.matched_count:
+            return jsonify({'message': 'Symptom marked as resolved.'})
+        else:
+            return jsonify({'error': 'Symptom not found.'}), 404
+    except (InvalidId, Exception):
+        return jsonify({'error': 'Invalid symptom ID.'}), 400
 
 # Helper: Create a new chat session
 def create_chat_session(user_id=None, title=None, first_message=None):

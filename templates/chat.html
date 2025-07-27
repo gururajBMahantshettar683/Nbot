@@ -176,38 +176,7 @@ function appendMessage(sender, text) {
   chatBox.scrollTop = chatBox.scrollHeight;
 }
 
-/*  OPTIONAL : Text added gradually
-function appendMessage(sender, text) {
-  const chatBox = document.getElementById('chat-box');
-  const msg = document.createElement('div');
-  msg.className = `chat-message ${sender}`;
 
-  if (sender === 'user') {
-    msg.textContent = text;
-    chatBox.appendChild(msg);
-    chatBox.scrollTop = chatBox.scrollHeight;
-    return;
-  }
-
-  // Typing effect for bot/assistant
-  const span = document.createElement('span');
-  msg.appendChild(span);
-  chatBox.appendChild(msg);
-  chatBox.scrollTop = chatBox.scrollHeight;
-
-  let index = 0;
-  function typeNextChar() {
-    if (index < text.length) {
-      span.innerHTML += text[index] === '\n' ? '<br>' : text[index];
-      index++;
-      chatBox.scrollTop = chatBox.scrollHeight;
-      setTimeout(typeNextChar, 20); // Adjust speed here (ms between characters)
-    }
-  }
-  typeNextChar();
-}
-
-*/
 
 
 
@@ -286,6 +255,7 @@ function showSpeechToast(message = "⚠️ Speech not recognized. Try again.") {
 }
 
 let recognition;
+let isRecognising = false;
 
 document.addEventListener('DOMContentLoaded', () => {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -294,47 +264,62 @@ document.addEventListener('DOMContentLoaded', () => {
   recognition.interimResults = false;
   recognition.maxAlternatives = 1;
   recognition.continuous = true;
-});
 
-document.getElementById('mic-btn').addEventListener('click', () => {
-  try {
-    recognition.start(); // actual speech recognition begins
-    isRegcognising = true;
-    
-  } catch (e) {
-    console.error('Recognition start error:', e);
-  }
-  setTimeout(() => {}, 5000);
-  const micBtn = document.getElementById('mic-btn');
-  micBtn.disabled = false;
-  micBtn.innerHTML = '<i class="bi bi-record-circle text-danger"></i>'; // recording icon
-
+  // Event handlers
   recognition.onresult = (event) => {
     const transcript = event.results[0][0].transcript;
     document.getElementById('chat-input').value = transcript;
   };
 
   recognition.onend = () => {
-    micBtn.disabled = false;
-    micBtn.innerHTML = '<i class="bi bi-mic"></i>';
+    isRecognising = false;
+    updateMicIcon(false);
   };
 
   recognition.onerror = (event) => {
-  console.error('Speech recognition error:', event.error);
+    console.error('Speech recognition error:', event.error);
 
-  if (event.error === "no-speech") {
-    showSpeechToast("🎤 No speech detected. Please try again.");
-  } else if (event.error === "audio-capture") {
-    showSpeechToast("🎤 Microphone not available.");
-  } else {
-    showSpeechToast("🎤 Error: " + event.error);
-  }
+    if (event.error === "no-speech") {
+      showSpeechToast("🎤 No speech detected. Please try again.");
+    } else if (event.error === "audio-capture") {
+      showSpeechToast("🎤 Microphone not available.");
+    } else {
+      showSpeechToast("🎤 Error: " + event.error);
+    }
 
-  micBtn.disabled = false;
-  micBtn.innerHTML = '<i class="bi bi-mic"></i>';
-};
-
+    isRecognising = false;
+    updateMicIcon(false);
+  };
 });
+
+document.getElementById('mic-btn').addEventListener('click', () => {
+  if (!recognition) return;
+
+  const micBtn = document.getElementById('mic-btn');
+
+  if (!isRecognising) {
+    try {
+      recognition.start();
+      isRecognising = true;
+      updateMicIcon(true);
+    } catch (e) {
+      console.error('Recognition start error:', e);
+    }
+  } else {
+    recognition.stop();  // <-- this is the key part
+    isRecognising = false;
+    updateMicIcon(false);
+  }
+});
+
+// Helper function to update mic icon
+function updateMicIcon(isActive) {
+  const micBtn = document.getElementById('mic-btn');
+  micBtn.disabled = false;
+  micBtn.innerHTML = isActive
+    ? '<i class="bi bi-record-circle text-danger"></i>'
+    : '<i class="bi bi-mic"></i>';
+}
 </script>
 <style>
 :root {
@@ -377,5 +362,69 @@ document.getElementById('mic-btn').addEventListener('click', () => {
 #chat-input { background: var(--chat-bot-bg); border-radius: 1rem; color: var(--text); }
 #send-btn { background: var(--primary); color: #fff; border-radius: 1rem; }
 #send-btn:hover { background: var(--primary-light); }
+
+<!-- Symptom Resolver Section -->
+<div class="container mt-4">
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-gradient-primary text-white d-flex align-items-center rounded-top">
+          <i class="bi bi-heart-pulse me-2"></i>
+          <strong>Current Symptoms</strong>
+        </div>
+        <div class="card-body" id="symptom-list-section">
+          <div id="symptom-list-loading" class="text-center my-2" style="display: none;">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Loading symptoms...</span>
+            </div>
+          </div>
+          <ul class="list-group" id="symptom-list"></ul>
+          <div id="no-symptoms-msg" class="text-muted text-center" style="display:none;">No current symptoms.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// --- Symptom Resolver Logic ---
+async function loadSymptoms() {
+  const list = document.getElementById('symptom-list');
+  const loading = document.getElementById('symptom-list-loading');
+  const noMsg = document.getElementById('no-symptoms-msg');
+  list.innerHTML = '';
+  loading.style.display = 'block';
+  noMsg.style.display = 'none';
+  try {
+    const res = await fetch('/api/symptoms');
+    const symptoms = await res.json();
+    loading.style.display = 'none';
+    if (!Array.isArray(symptoms) || symptoms.length === 0) {
+      noMsg.style.display = 'block';
+      return;
+    }
+    symptoms.forEach(sym => {
+      const li = document.createElement('li');
+      li.className = 'list-group-item d-flex justify-content-between align-items-center';
+      li.innerHTML = `<span><strong>${sym.symptom.charAt(0).toUpperCase() + sym.symptom.slice(1)}</strong>${sym.description ? ': ' + sym.description : ''} <span class='badge bg-danger ms-2'>${sym.severity}</span></span>`;
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-sm btn-outline-success';
+      btn.innerHTML = '<i class="bi bi-check-circle"></i> Resolved';
+      btn.onclick = async () => {
+        btn.disabled = true;
+        await fetch(`/api/symptoms/${sym._id}/resolve`, { method: 'POST' });
+        await loadSymptoms();
+      };
+      li.appendChild(btn);
+      list.appendChild(li);
+    });
+  } catch (e) {
+    loading.style.display = 'none';
+    noMsg.style.display = 'block';
+    noMsg.textContent = 'Failed to load symptoms.';
+  }
+}
+document.addEventListener('DOMContentLoaded', loadSymptoms);
+</script>
 </style>
 {% endblock %}

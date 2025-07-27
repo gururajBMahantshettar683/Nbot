@@ -1,0 +1,159 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-5">
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <div class="card shadow-lg border-0">
+        <div class="card-header bg-gradient-primary text-white d-flex align-items-center rounded-top">
+          <i class="bi bi-heart-pulse me-2"></i>
+          <strong>Current Symptoms</strong>
+        </div>
+        <div class="card-body" id="symptom-list-section">
+          <!-- Symptom Trends Chart -->
+          <div class="mb-4">
+            <canvas id="symptomTrendsChart" height="120"></canvas>
+          </div>
+          <div id="symptom-list-loading" class="text-center my-2" style="display: none;">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Loading symptoms...</span>
+            </div>
+          </div>
+          <ul class="list-group" id="symptom-list"></ul>
+          <div id="no-symptoms-msg" class="text-muted text-center" style="display:none;">No current symptoms.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+function formatDateTime(dtStr) {
+  if (!dtStr) return '';
+  const d = new Date(dtStr);
+  return d.toLocaleString();
+}
+
+async function loadSymptomTrends() {
+  const ctx = document.getElementById('symptomTrendsChart').getContext('2d');
+  try {
+    const res = await fetch('/api/symptom_trends');
+    const data = await res.json();
+    if (data && Array.isArray(data.labels) && data.labels.length > 0 && Array.isArray(data.datasets)) {
+      // Assign a color to each symptom type
+      const colorPalette = [
+        '#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f', '#edc949', '#af7aa1', '#ff9da7', '#9c755f', '#bab0ab'
+      ];
+      const datasets = data.datasets.map((ds, i) => ({
+        label: ds.label.charAt(0).toUpperCase() + ds.label.slice(1),
+        data: ds.data,
+        backgroundColor: colorPalette[i % colorPalette.length],
+        meta: ds.meta
+      }));
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: data.labels,
+          datasets: datasets
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: true, position: 'top' },
+            title: { display: true, text: 'Symptoms per Day (Stacked)' },
+            tooltip: {
+              enabled: true,
+              callbacks: {
+                label: function(context) {
+                  const ds = context.dataset;
+                  const idx = context.dataIndex;
+                  const count = ds.data[idx];
+                  const meta = ds.meta && ds.meta[idx] ? ds.meta[idx] : {};
+                  let label = `${ds.label}: ${count}`;
+                  if (meta.severities && meta.severities.length > 0) {
+                    label += ` | Severity: ${meta.severities.join(', ')}`;
+                  }
+                  if (meta.descriptions && meta.descriptions.some(d => d)) {
+                    label += ` | Desc: ${meta.descriptions.filter(d => d).join('; ')}`;
+                  }
+                  return label;
+                }
+              }
+            }
+          },
+          scales: {
+            x: { stacked: true, title: { display: true, text: 'Date' } },
+            y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Count' }, ticks: { precision: 0 } }
+          }
+        }
+      });
+    } else {
+      ctx.font = '16px sans-serif';
+      ctx.fillText('No symptom data to display.', 10, 50);
+    }
+  } catch (e) {
+    ctx.font = '16px sans-serif';
+    ctx.fillText('Failed to load trends.', 10, 50);
+  }
+}
+
+async function loadSymptoms() {
+  const list = document.getElementById('symptom-list');
+  const loading = document.getElementById('symptom-list-loading');
+  const noMsg = document.getElementById('no-symptoms-msg');
+  list.innerHTML = '';
+  loading.style.display = 'block';
+  noMsg.style.display = 'none';
+  try {
+    const res = await fetch('/api/symptoms');
+    const symptoms = await res.json();
+    loading.style.display = 'none';
+    if (!Array.isArray(symptoms) || symptoms.length === 0) {
+      noMsg.style.display = 'block';
+      return;
+    }
+    symptoms.forEach(sym => {
+      const li = document.createElement('li');
+      li.className = 'list-group-item d-flex justify-content-between align-items-center';
+      // Color badge for status
+      let statusBadge = '';
+      if (sym.status === 'resolved') {
+        statusBadge = `<span class='badge bg-success ms-2'>Resolved</span>`;
+      } else {
+        statusBadge = `<span class='badge bg-warning text-dark ms-2'>Active</span>`;
+      }
+      // Severity color
+      let sevColor = 'bg-danger';
+      if (sym.severity <= 2) sevColor = 'bg-success';
+      else if (sym.severity == 3) sevColor = 'bg-warning text-dark';
+      // Date/time
+      const timeStr = sym.date ? `<span class='text-muted small ms-2'><i class='bi bi-clock'></i> ${formatDateTime(sym.date)}</span>` : '';
+      li.innerHTML = `<span><strong>${sym.symptom.charAt(0).toUpperCase() + sym.symptom.slice(1)}</strong>${sym.description ? ': ' + sym.description : ''} <span class='badge ${sevColor} ms-2'>${sym.severity}</span> ${statusBadge} ${timeStr}</span>`;
+      if (sym.status !== 'resolved') {
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-sm btn-outline-success';
+        btn.innerHTML = '<i class="bi bi-check-circle"></i> Resolved';
+        btn.onclick = async () => {
+          btn.disabled = true;
+          await fetch(`/api/symptoms/${sym._id}/resolve`, { method: 'POST' });
+          await loadSymptoms();
+        };
+        li.appendChild(btn);
+      }
+      list.appendChild(li);
+    });
+  } catch (e) {
+    loading.style.display = 'none';
+    noMsg.style.display = 'block';
+    noMsg.textContent = 'Failed to load symptoms.';
+  }
+}
+document.addEventListener('DOMContentLoaded', () => {
+  loadSymptomTrends();
+  loadSymptoms();
+});
+</script>
+{% endblock %}

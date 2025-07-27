@@ -76,7 +76,6 @@
                         <form method="POST" action="{{ url_for('log_intake') }}">
                             <div class="mb-3">
                                 <label for="food_name" class="form-label">Food Name</label>
-                                <input type="text" class="form-control mb-2" id="foodSearch" placeholder="Filter by food..." autocomplete="off">
                                 <select class="form-select shadow-sm" id="food_name" name="food_name" required>
                                     <option value="" disabled selected>Select a food</option>
                                     {% if foods_available %}
@@ -129,7 +128,7 @@
                         <i class="bi bi-plus-circle me-2"></i>Log Symptom
                     </button>
                     <div class="collapse mt-4" id="symptomForm">
-                        <form method="POST" action="{{ url_for('log_symptoms') }}">
+                        <form method="POST" action="{{ url_for('log_symptoms') }}" id="symptom-log-form">
                             <div class="mb-3">
                                 <label for="symptom" class="form-label">Symptom</label>
                                 <select class="form-select shadow-sm" id="symptom" name="symptom" required>
@@ -140,6 +139,10 @@
                                     <option value="custom">Custom</option>
                                 </select>
                             </div>
+                            <div class="mb-3" id="custom-symptom-group" style="display:none;">
+                                <label for="custom_symptom" class="form-label">Enter Custom Symptom</label>
+                                <input type="text" class="form-control shadow-sm" id="custom_symptom" name="custom_symptom" maxlength="40" placeholder="Enter symptom name">
+                            </div>
                             <div class="mb-3">
                                 <label for="severity" class="form-label">Severity (1-5)</label>
                                 <div class="input-group">
@@ -148,12 +151,27 @@
                                 </div>
                             </div>
                             <div class="mb-3">
-                                <label for="description" class="form-label">Description (required for custom)</label>
+                                <label for="description" class="form-label">Description (optional)</label>
                                 <textarea class="form-control shadow-sm" id="description" name="description" rows="3"></textarea>
                             </div>
                             <button type="submit" class="btn btn-danger btn-icon"><i class="bi bi-check-circle me-2"></i>Submit Symptom
                             </button>
                         </form>
+                        <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                          const symptomSelect = document.getElementById('symptom');
+                          const customGroup = document.getElementById('custom-symptom-group');
+                          symptomSelect.addEventListener('change', function() {
+                            if (this.value === 'custom') {
+                              customGroup.style.display = '';
+                              document.getElementById('custom_symptom').required = true;
+                            } else {
+                              customGroup.style.display = 'none';
+                              document.getElementById('custom_symptom').required = false;
+                            }
+                          });
+                        });
+                        </script>
                     </div>
                 </div>
             </div>
@@ -167,25 +185,6 @@
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<script>
-    document.addEventListener("DOMContentLoaded", function() {
-        // Food search filter
-        const foodSearch = document.getElementById("foodSearch");
-        const foodSelect = document.getElementById("food_name");
-        foodSearch.addEventListener("input", function() {
-            const search = foodSearch.value.trim().toLowerCase();
-            for (let i = 0; i < foodSelect.options.length; i++) {
-                const option = foodSelect.options[i];
-                if (option.value === "") continue; // skip placeholder
-                option.style.display = option.text.toLowerCase().includes(search) ? "" : "none";
-            }
-            // If no match, keep placeholder selected
-            if (!Array.from(foodSelect.options).some(opt => opt.style.display === "" && opt.value !== "")) {
-                foodSelect.selectedIndex = 0;
-            }
-        });
-    });
-</script>
 <style>
     /* Custom Styles */
     .card {

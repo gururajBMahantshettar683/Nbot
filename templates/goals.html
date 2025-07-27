@@ -16,12 +16,15 @@
           {% if goals %}
           <ul class="list-group list-group-flush">
             {% for goal in goals %}
-            <li class="list-group-item d-flex align-items-center justify-content-between py-3 px-2" style="background: var(--chat-bg); border-radius: 0.8rem; margin-bottom: 0.5rem; border: none;">
+            <li class="list-group-item d-flex align-items-center justify-content-between py-3 px-2" style="background: var(--chat-bg); border-radius: 0.8rem; margin-bottom: 0.5rem; border: none;" id="goal-{{ goal._id }}">
               <div class="d-flex align-items-center gap-2">
                 <input class="form-check-input" type="checkbox" {% if goal.completed %}checked{% endif %} onclick="toggleGoal('{{ goal._id }}', this.checked)">
                 <span class="fw-medium {% if goal.completed %}text-decoration-line-through text-muted{% endif %}" style="font-size: 1.08rem;">{{ goal.goal }}</span>
               </div>
-              <span class="badge bg-secondary" style="font-size: 0.95rem;">{{ goal.created_at.strftime('%Y-%m-%d') if goal.created_at else '' }}</span>
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-secondary" style="font-size: 0.95rem;">{{ goal.created_at.strftime('%Y-%m-%d') if goal.created_at else '' }}</span>
+                <button class="btn btn-sm btn-outline-danger ms-2" title="Delete Goal" onclick="deleteGoal('{{ goal._id }}')"><i class="bi bi-trash"></i></button>
+              </div>
             </li>
             {% endfor %}
           </ul>
@@ -45,6 +48,22 @@ function toggleGoal(goalId, completed) {
   }).then(res => res.json()).then(data => {
     if (data.message) {
       location.reload();
+    }
+  });
+}
+
+function deleteGoal(goalId) {
+  if (!confirm('Delete this goal?')) return;
+  fetch(`/api/goals/${goalId}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' }
+  }).then(res => res.json()).then(data => {
+    if (data.message) {
+      // Remove the goal from the UI without reload
+      const li = document.getElementById('goal-' + goalId);
+      if (li) li.remove();
+    } else if (data.error) {
+      alert(data.error);
     }
   });
 }

@@ -44,6 +44,12 @@ def retrieve_docs(query, user=None):
         for s in user.get('recent_symptoms', []):
             if s.get('symptom'):
                 extra_keywords.append(str(s['symptom']))
+        # Add recent foods
+        for f in user.get('recent_foods', []):
+            if isinstance(f, str) and f:
+                extra_keywords.append(f)
+            elif isinstance(f, dict) and 'food_name' in f:
+                extra_keywords.append(str(f['food_name']))
         # Add diet type if present
         if user.get('diet_type'):
             extra_keywords.append(user['diet_type'])
