@@ -76,6 +76,7 @@
                         <form method="POST" action="{{ url_for('log_intake') }}">
                             <div class="mb-3">
                                 <label for="food_name" class="form-label">Food Name</label>
+                                <input type="text" class="form-control mb-2" id="foodSearch" placeholder="Filter by food..." autocomplete="off">
                                 <select class="form-select shadow-sm" id="food_name" name="food_name" required>
                                     <option value="" disabled selected>Select a food</option>
                                     {% if foods_available %}
@@ -166,6 +167,25 @@
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // Food search filter
+        const foodSearch = document.getElementById("foodSearch");
+        const foodSelect = document.getElementById("food_name");
+        foodSearch.addEventListener("input", function() {
+            const search = foodSearch.value.trim().toLowerCase();
+            for (let i = 0; i < foodSelect.options.length; i++) {
+                const option = foodSelect.options[i];
+                if (option.value === "") continue; // skip placeholder
+                option.style.display = option.text.toLowerCase().includes(search) ? "" : "none";
+            }
+            // If no match, keep placeholder selected
+            if (!Array.from(foodSelect.options).some(opt => opt.style.display === "" && opt.value !== "")) {
+                foodSelect.selectedIndex = 0;
+            }
+        });
+    });
+</script>
 <style>
     /* Custom Styles */
     .card {

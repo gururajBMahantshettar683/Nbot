@@ -35,26 +35,33 @@ chats_collection = db['chats']
 goals_collection = db['goals']
 
 # Load and normalize dataset
-CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Anuvaad_INDB_2024.11_converted.csv')
-COMMON_FOODS = []
-df = pd.DataFrame()
-try:
-    if not os.path.exists(CSV_PATH):
-        print(f"Error: Dataset file '{CSV_PATH}' not found in {os.getcwd()}")
-    else:
-        df = pd.read_csv(CSV_PATH, encoding='utf-8')
-        if 'food_name' not in df.columns:
-            print("Error: 'food_name' column not found in dataset")
-        else:
-            df['food_name'] = df['food_name'].astype(str).str.strip().str.lower()
-            df = df[df['food_name'].notna() & (df['food_name'] != '')]
-            COMMON_FOODS = sorted(df['food_name'].unique().tolist())
-            print(f"Loaded {len(COMMON_FOODS)} normalized food names")
-except Exception as e:
-    print(f"Error loading dataset: {e}")
 
-# Cache dataset
-app.config['FOOD_DF'] = df.copy()
+CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Anuvaad_INDB_2024.11_converted.csv')
+
+# Check if cached in app.config
+if 'FOOD_DF' in app.config and 'COMMON_FOODS' in app.config:
+    df = app.config['FOOD_DF'].copy()
+    COMMON_FOODS = app.config['COMMON_FOODS'][:]
+else:
+    COMMON_FOODS = []
+    df = pd.DataFrame()
+    try:
+        if not os.path.exists(CSV_PATH):
+            print(f"Error: Dataset file '{CSV_PATH}' not found in {os.getcwd()}")
+        else:
+            df = pd.read_csv(CSV_PATH, encoding='utf-8')
+            if 'food_name' not in df.columns:
+                print("Error: 'food_name' column not found in dataset")
+            else:
+                df['food_name'] = df['food_name'].astype(str).str.strip().str.lower()
+                df = df[df['food_name'].notna() & (df['food_name'] != '')]
+                COMMON_FOODS = sorted(df['food_name'].unique().tolist())
+                print(f"Loaded {len(COMMON_FOODS)} normalized food names")
+    except Exception as e:
+        print(f"Error loading dataset: {e}")
+    # Cache dataset and common foods
+    app.config['FOOD_DF'] = df.copy()
+    app.config['COMMON_FOODS'] = COMMON_FOODS[:]
 
 NUTRIENT_COLUMNS = [
     'energy_kcal', 'carb_g', 'protein_g', 'fat_g', 'calcium_mg', 'iron_mg', 'vitc_mg'
