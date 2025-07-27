@@ -40,12 +40,15 @@ goals_collection = db['goals']
 
 CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Anuvaad_INDB_2024.11_converted.csv')
 
+import pandas as pd
 # Check if cached in app.config
-if 'FOOD_DF' in app.config and 'COMMON_FOODS' in app.config:
+if 'FOOD_DF' in app.config and 'COMMON_FOODS' in app.config and 'VEG_COMMON_FOODS' in app.config:
     df = app.config['FOOD_DF'].copy()
     COMMON_FOODS = app.config['COMMON_FOODS'][:]
+    VEG_COMMON_FOODS = app.config['VEG_COMMON_FOODS'][:]
 else:
     COMMON_FOODS = []
+    VEG_COMMON_FOODS = []
     df = pd.DataFrame()
     try:
         if not os.path.exists(CSV_PATH):
@@ -58,12 +61,17 @@ else:
                 df['food_name'] = df['food_name'].astype(str).str.strip().str.lower()
                 df = df[df['food_name'].notna() & (df['food_name'] != '')]
                 COMMON_FOODS = sorted(df['food_name'].unique().tolist())
-                print(f"Loaded {len(COMMON_FOODS)} normalized food names")
+                if 'veg_category' in df.columns:
+                    VEG_COMMON_FOODS = sorted(df[df['veg_category'].astype(str).str.lower() == 'veg']['food_name'].unique().tolist())
+                else:
+                    VEG_COMMON_FOODS = []
+                print(f"Loaded {len(COMMON_FOODS)} normalized food names, {len(VEG_COMMON_FOODS)} veg foods")
     except Exception as e:
         print(f"Error loading dataset: {e}")
     # Cache dataset and common foods
     app.config['FOOD_DF'] = df.copy()
     app.config['COMMON_FOODS'] = COMMON_FOODS[:]
+    app.config['VEG_COMMON_FOODS'] = VEG_COMMON_FOODS[:]
 
 NUTRIENT_COLUMNS = [
     'energy_kcal', 'carb_g', 'protein_g', 'fat_g', 'calcium_mg', 'iron_mg', 'vitc_mg'
@@ -122,6 +130,7 @@ def home():
                              dob=user.get('dob'), 
                              gender=user.get('gender'), 
                              common_foods=COMMON_FOODS,
+                             veg_common_foods=VEG_COMMON_FOODS,
                              foods_available=len(COMMON_FOODS) > 0, 
                              today=today)
     except Exception as e:

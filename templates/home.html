@@ -76,11 +76,18 @@
                         <form method="POST" action="{{ url_for('log_intake') }}">
                             <div class="mb-3">
                                 <label for="food_name" class="form-label">Food Name</label>
+                                <div class="d-flex align-items-center mb-2 gap-2">
+                                    <input type="text" class="form-control" id="foodSearch" placeholder="Filter by food..." autocomplete="off">
+                                    <div class="form-check ms-2">
+                                        <input class="form-check-input" type="checkbox" id="vegOnly">
+                                        <label class="form-check-label" for="vegOnly">Veg Only</label>
+                                    </div>
+                                </div>
                                 <select class="form-select shadow-sm" id="food_name" name="food_name" required>
                                     <option value="" disabled selected>Select a food</option>
                                     {% if foods_available %}
                                         {% for food in common_foods %}
-                                            <option value="{{ food }}">{{ food.title() }}</option>
+                                            <option value="{{ food }}" data-veg="{{ 'true' if food in veg_common_foods else 'false' }}">{{ food.title() }}</option>
                                         {% endfor %}
                                     {% else %}
                                         <option value="" disabled>No foods available. Contact support.</option>
@@ -185,6 +192,42 @@
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // Food search and veg filter
+        const foodSearch = document.getElementById("foodSearch");
+        const foodSelect = document.getElementById("food_name");
+        const vegOnly = document.getElementById("vegOnly");
+
+        function filterFoods() {
+            const search = foodSearch.value.trim().toLowerCase();
+            const vegChecked = vegOnly.checked;
+            let anyVisible = false;
+            for (let i = 0; i < foodSelect.options.length; i++) {
+                const option = foodSelect.options[i];
+                if (option.value === "") continue; // skip placeholder
+                const isVeg = option.getAttribute("data-veg") === "true";
+                const matchesSearch = option.text.toLowerCase().includes(search);
+                const matchesVeg = !vegChecked || isVeg;
+                if (matchesSearch && matchesVeg) {
+                    option.style.display = "";
+                    anyVisible = true;
+                } else {
+                    option.style.display = "none";
+                }
+            }
+            // If no match, keep placeholder selected
+            if (!anyVisible) {
+                foodSelect.selectedIndex = 0;
+            }
+        }
+
+        foodSearch.addEventListener("input", filterFoods);
+        vegOnly.addEventListener("change", filterFoods);
+        // Initial filter
+        filterFoods();
+    });
+</script>
 <style>
     /* Custom Styles */
     .card {
