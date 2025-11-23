@@ -6,6 +6,7 @@ faiss-cpu
 pdfplumber
 huggingface-hub
 pypdf
+gunicorn
 python-dotenv
 sentence-transformers
 langchain-huggingface
