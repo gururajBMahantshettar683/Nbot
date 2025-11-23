@@ -4,6 +4,7 @@ langchain-community
 langchain-ollama
 langchain-core
 faiss-cpu
+chromadb
 pdfplumber
 huggingface-hub
 pypdf
