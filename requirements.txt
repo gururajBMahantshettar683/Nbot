@@ -1,3 +1,4 @@
+flask
 langchain
 langchain-community
 langchain-ollama
